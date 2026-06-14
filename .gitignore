@@ -1,0 +1,26 @@
+# Local configuration with machine specific paths.
+config.ps1
+
+# Build output. This holds generated secrets and per VM build files.
+out/
+build/
+
+# Generated credentials and keys, wherever they land.
+.env
+*.env
+id_ed25519
+id_ed25519.pub
+*.key
+*.pem
+
+# Filled in answer files that contain the real password and passphrase.
+user-data
+!templates/user-data.tt
+
+# Rebuilt install images.
+*.iso
+
+# Windows and editor noise.
+Thumbs.db
+desktop.ini
+*.tmp

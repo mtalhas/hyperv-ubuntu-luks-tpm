@@ -1,0 +1,9 @@
+# Keep Unix line endings on files that run inside Linux or that cloud-init reads.
+# Windows line endings would break the install script and the answer file.
+*.sh            text eol=lf
+templates/*     text eol=lf
+lib/build-iso.sh text eol=lf
+
+# PowerShell and docs can follow the platform default.
+*.ps1           text
+*.md            text

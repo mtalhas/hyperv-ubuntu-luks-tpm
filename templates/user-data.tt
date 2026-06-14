@@ -1,0 +1,99 @@
+#cloud-config
+# Ubuntu autoinstall answer file.
+# Tokens wrapped in double underscores are replaced at build time with values for
+# the specific VM being built. The filled copy is written to a build folder that
+# is excluded from version control, so no real password or key is ever committed.
+autoinstall:
+  version: 1
+  locale: en_US.UTF-8
+  keyboard:
+    layout: us
+
+  # Static addressing. A manually created Hyper-V NAT switch has no DHCP server,
+  # so the VM is given a fixed address that routes out through the NAT gateway.
+  network:
+    version: 2
+    ethernets:
+      primary:
+        match:
+          name: "e*"
+        dhcp4: false
+        addresses:
+          - __IP_CIDR__
+        routes:
+          - to: default
+            via: __GATEWAY__
+        nameservers:
+          addresses: [__DNS_LIST__]
+
+  identity:
+    realname: __USERNAME__
+    hostname: __HOSTNAME__
+    username: __USERNAME__
+    # Throwaway value. The real password is set further down with chpasswd before
+    # the first real boot, so this hash is never a usable login.
+    password: "$6$AKEUgxMURXzg6qpM$9nctB1MYPFFzqo3o1imQNW8zO6VSOh9zahS093XbsJs6CJDO/k1gDSQCS4qWgd9amkSG4YU3x.OO8xnhaIgS./"
+
+  ssh:
+    install-server: true
+    allow-pw: true
+    authorized-keys:
+      - __SSH_PUBKEY__
+
+  # Whole disk, LVM on top of LUKS. Supplying a password turns on encryption.
+  storage:
+    layout:
+      name: lvm
+      password: "__LUKS_PASSPHRASE__"
+      sizing-policy: all
+
+  # Base tooling for the encryption work. The boot time integration package is
+  # chosen later, after we detect which initramfs generator this release uses.
+  packages:
+    - clevis
+    - clevis-tpm2
+    - clevis-luks
+    - tpm2-tools
+
+  late-commands:
+    - |
+      cat > /target/root/post-install.sh <<'INNER'
+      #!/bin/bash
+      set -eux
+
+      # Set the real account password without needing a hash on the build host.
+      echo '__USERNAME__:__USER_PASSWORD__' | chpasswd
+
+      # Find the encrypted partition that holds the root volume group.
+      LUKS_DEV=$(blkid -t TYPE=crypto_LUKS -o device | head -n1)
+      echo "Encrypted device: $LUKS_DEV"
+
+      # Newer Ubuntu releases build the initramfs with dracut. Older ones use
+      # initramfs-tools. Pick the matching clevis integration and rebuild command.
+      if [ -d /usr/lib/dracut/modules.d ] || command -v dracut >/dev/null 2>&1; then
+        apt-get install -y clevis-dracut
+        # Force the clevis module into every initramfs build. Without this a later
+        # kernel update could build a boot image that has no unlock hook, and the
+        # disk would start asking for the passphrase again.
+        mkdir -p /etc/dracut.conf.d
+        echo 'add_dracutmodules+=" clevis "' > /etc/dracut.conf.d/clevis.conf
+        REGEN_INITRAMFS="dracut --regenerate-all --force"
+      else
+        apt-get install -y clevis-initramfs
+        REGEN_INITRAMFS="update-initramfs -u -k all"
+      fi
+
+      # Seal a key to the virtual TPM with no PCR policy. The drive then unlocks
+      # automatically whenever it runs inside this VM, with no passphrase prompt.
+      # The passphrase set during install stays as a recovery key in slot 0.
+      printf '%s' '__LUKS_PASSPHRASE__' | clevis luks bind -y -d "$LUKS_DEV" -k - tpm2 '{}'
+      clevis luks list -d "$LUKS_DEV"
+
+      $REGEN_INITRAMFS
+      echo "POST-INSTALL-DONE"
+      INNER
+      chmod +x /target/root/post-install.sh
+      curtin in-target --target=/target -- /root/post-install.sh > /target/root/post-install.log 2>&1 || echo "post-install step reported a problem, see /root/post-install.log"
+
+  # Power off when finished so the build script can switch boot order cleanly.
+  shutdown: poweroff
