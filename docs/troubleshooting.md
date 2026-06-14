@@ -84,6 +84,41 @@ Fix. Use fixed memory, not dynamic. The build sets fixed memory on every VM. To
 fix an existing VM, power it off, turn dynamic memory off with a fixed startup
 size, then start it again.
 
+## Where the build leaves evidence
+
+Every run writes to `out\<vmname>\`:
+
+- `logs\build-<timestamp>.log` and `logs\transcript-<timestamp>.txt`: the full,
+  timestamped record of the run. Start here.
+- `build-failure-console.png`, `install-failure-console.png`,
+  `verify-<stage>-console.png`: a picture of the VM screen, saved when a step
+  fails. This is the fastest way to tell a passphrase prompt from an installer
+  error from a login prompt.
+- `post-install.log`: the in VM record of the encryption setup, pulled out after
+  a successful boot. If the build reports that the encryption step did not
+  complete, the failing command is at the end of this file.
+- `.env` and `id_ed25519`: the credentials and key for the VM.
+
+A common confusion: when the VM does not reach SSH, the host genuinely cannot
+tell a disk passphrase prompt apart from a still booting machine or a network
+problem. The saved console picture resolves it. If it shows the passphrase
+prompt, the clevis enrollment during install did not work, so read
+`post-install.log`.
+
+## Supported versions and limits
+
+- Targeted at current Ubuntu Server live images, both the dracut releases
+  (24.10 and later) and the older initramfs-tools ones. The image rebuild reads
+  the source image's own boot layout, so it adapts, but a release that renames
+  `/casper/vmlinuz` or `/casper/initrd` would need the menu template updated.
+- One LUKS partition holding the root volume, which is what the guided LVM layout
+  produces. A custom multi disk or multi LUKS layout is out of scope.
+- The disk unlock key is sealed to the VM's own virtual TPM, so an encrypted VM
+  cannot be cloned and still unlock. Build each VM fresh.
+- The TPM uses a local key protector, which means a host administrator can run
+  the VM and unseal the disk. This protects data if the disk file is copied off
+  the host, not against someone who already controls the host.
+
 ## Checking the result by hand
 
 Log in with the SSH key from the output folder, then:

@@ -49,6 +49,15 @@ encrypted Ubuntu VM without learning every sharp edge of the platform first.
    mounted, confirm the encryption and the TPM binding, then power cycle and
    confirm the unlock repeats.
 8. Print where the credentials are and how to log in.
+9. Validate the config and the host before starting, so mistakes show up as clear
+   messages up front rather than cryptic failures deep inside a long run.
+10. Write a timestamped log and a console transcript for every run. On a failure,
+    save a picture of the VM screen and pull the in VM setup log, so the cause is
+    visible after the fact.
+11. Remove the answer file and the rebuilt image after a successful build, since
+    they hold the passphrase in clear text.
+12. Ship a test suite for the pure logic and static analysis for the scripts, run
+    on every change, so the bugs that were already fixed cannot come back.
 
 ## Guardrails learned from the first manual build
 

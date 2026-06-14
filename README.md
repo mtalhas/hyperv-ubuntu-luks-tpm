@@ -1,5 +1,7 @@
 # Encrypted Ubuntu VM builder for Hyper-V
 
+![tests](https://github.com/mtalhas/hyperv-ubuntu-luks-tpm/actions/workflows/ci.yml/badge.svg)
+
 Build a Hyper-V Generation 2 Ubuntu Server VM whose disk is fully encrypted and
 unlocks itself from the virtual TPM, with no passphrase prompt at boot. One
 command, no manual steps, and the build checks its own result before it reports
@@ -78,10 +80,38 @@ Running the build again with the same name removes the old VM and rebuilds it
 fresh. The disk file is recreated each time.
 
 The rebuilt install image holds the answer file, which contains the passphrase
-in clear text. It lives in your VM folder, outside the repo. Delete it once you
-no longer need to rebuild that VM. The build prints its path at the end.
+in clear text. After a successful build it is deleted automatically, along with
+the staging folder. A re-run regenerates both. If you want to keep the image to
+rebuild without re-running everything, pass `-KeepRebuildImage`.
+
+## Logs and troubleshooting
+
+Every run writes a timestamped log and a console transcript to
+`out\<vmname>\logs\`. Read the log first when something fails.
+
+If a step fails, the build also saves a picture of the VM screen next to the
+credentials (`build-failure-console.png`, `install-failure-console.png`, or
+`verify-...-console.png`). That picture is the quickest way to tell whether the
+VM is sitting at a disk passphrase prompt, an installer error, or a login
+prompt. The in VM record of the encryption setup is pulled to
+`out\<vmname>\post-install.log` after a successful boot.
+
+See `docs\troubleshooting.md` for the platform behaviours this build works
+around and how to read these artifacts.
+
+## Running the tests
+
+The pure logic has a unit test suite, and the scripts have static analysis
+gates. None of the unit tests need Hyper-V, so they run anywhere.
+
+```powershell
+pwsh -File .\run-tests.ps1            # everything
+pwsh -File .\run-tests.ps1 -Tag Unit  # fast lane, no external tools
+```
+
+The same suite runs in GitHub Actions on every push (see the badge above).
 
 ## Notes
 
-For background on the platform behaviours this build works around, and how to
-extend it, see `PRD.md` and `docs/troubleshooting.md`.
+For background on the design and the platform behaviours this build works
+around, see `PRD.md` and `docs\troubleshooting.md`.

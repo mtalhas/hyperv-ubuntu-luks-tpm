@@ -59,9 +59,12 @@ autoinstall:
     - |
       cat > /target/root/post-install.sh <<'INNER'
       #!/bin/bash
-      set -eux
+      # No command tracing here on purpose. This log is copied to the build host,
+      # and tracing would print the account password and the disk passphrase into
+      # it. Explicit progress lines below keep the log useful without the secrets.
+      set -eu
 
-      # Set the real account password without needing a hash on the build host.
+      echo "Setting the account password"
       echo '__USERNAME__:__USER_PASSWORD__' | chpasswd
 
       # Find the encrypted partition that holds the root volume group.
@@ -86,8 +89,10 @@ autoinstall:
       # Seal a key to the virtual TPM with no PCR policy. The drive then unlocks
       # automatically whenever it runs inside this VM, with no passphrase prompt.
       # The passphrase set during install stays as a recovery key in slot 0.
+      echo "Binding the disk to the TPM"
       printf '%s' '__LUKS_PASSPHRASE__' | clevis luks bind -y -d "$LUKS_DEV" -k - tpm2 '{}'
       clevis luks list -d "$LUKS_DEV"
+      echo "Rebuilding the initramfs"
 
       $REGEN_INITRAMFS
       echo "POST-INSTALL-DONE"

@@ -39,4 +39,19 @@
     # Where credentials and build files for this VM are written.
     # This whole folder is ignored by git.
     OutputDir         = '.\out'
+
+    # ---- Optional. Sensible defaults are used if you leave these out. ----
+
+    # If set, the build checks the source image SHA256 before using it, so a
+    # silent point release swap or a partial download fails fast. Get the value
+    # from the Ubuntu releases page, or with Get-FileHash on the file.
+    # IsoSha256       = ''
+
+    # WSL distribution to run xorriso in. Leave unset to use the default distro.
+    # WslDistro       = 'Ubuntu'
+
+    # Timeouts. Raise these on a slow host or a large disk.
+    # InstallTimeoutMinutes  = 60
+    # VerifyTimeoutSeconds   = 600
+    # ColdBootTimeoutSeconds = 360
 }

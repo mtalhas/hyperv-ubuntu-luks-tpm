@@ -5,6 +5,17 @@
 # template and refuses to change it. So the Linux template is set first, and the
 # TPM is switched on last. Building the VM fresh each time sidesteps that lock.
 
+function Remove-FileWithRetry {
+    # Right after Remove-VM the disk file can stay locked for a moment. Retry a few
+    # times so the build does not fail with a transient "file in use".
+    param([string]$Path, [int]$Tries = 10)
+    for ($i = 0; $i -lt $Tries; $i++) {
+        if (-not (Test-Path $Path)) { return }
+        try { Remove-Item $Path -Force -ErrorAction Stop; return } catch { Start-Sleep -Seconds 2 }
+    }
+    throw "Could not remove '$Path' (still in use after $Tries tries)."
+}
+
 function New-EncryptedVm {
     param(
         [hashtable]$Config,
@@ -15,21 +26,20 @@ function New-EncryptedVm {
     $vmDir = $Config.VmDir
     $vhdx  = Join-Path $vmDir ("{0}.vhdx" -f $vm)
 
-    Write-Host "== Creating VM '$vm' =="
+    Write-BuildLog "Creating VM '$vm'" STEP
 
-    # Remove any earlier copy so the build is repeatable.
     $existing = Get-VM -Name $vm -ErrorAction SilentlyContinue
     if ($existing) {
-        Write-Host '   Removing the existing VM (its disk file is recreated fresh below).'
+        Write-BuildLog "Removing the existing VM (its disk file is recreated fresh below)." INFO
         if ($existing.State -ne 'Off') { Stop-VM -Name $vm -TurnOff -Force }
         Get-VMSnapshot -VMName $vm -ErrorAction SilentlyContinue | Remove-VMSnapshot -ErrorAction SilentlyContinue
         Remove-VM -Name $vm -Force
+        Start-Sleep -Seconds 2
     }
 
     if (-not (Test-Path $vmDir)) { New-Item -ItemType Directory -Path $vmDir -Force | Out-Null }
-    if (Test-Path $vhdx) { Remove-Item $vhdx -Force }
+    Remove-FileWithRetry -Path $vhdx
 
-    # Fresh empty system disk.
     New-VHD -Path $vhdx -SizeBytes ($Config.DiskSizeGB * 1GB) -Dynamic | Out-Null
 
     New-VM -Name $vm -Generation 2 -MemoryStartupBytes ($Config.MemoryMB * 1MB) `
@@ -60,5 +70,5 @@ function New-EncryptedVm {
     Enable-VMTPM -VMName $vm
     Set-VMSecurity -VMName $vm -EncryptStateAndVmMigrationTraffic $true
 
-    Write-Host '   VM created with Linux Secure Boot template and virtual TPM enabled.'
+    Write-BuildLog "VM created with Linux Secure Boot template and virtual TPM enabled." INFO
 }
