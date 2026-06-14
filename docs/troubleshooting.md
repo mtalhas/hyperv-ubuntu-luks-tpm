@@ -84,6 +84,22 @@ Fix. Use fixed memory, not dynamic. The build sets fixed memory on every VM. To
 fix an existing VM, power it off, turn dynamic memory off with a fixed startup
 size, then start it again.
 
+## The install stalls or crashes during the image extract
+
+Symptom. The install freezes part way through, and a saved console screenshot
+shows a kernel stack trace mentioning overlay or rsync, often "rsync exited with
+irqs disabled". The network stays up but nothing finishes.
+
+Cause. A known random kernel fault in overlayfs (ovl_iterate_merged) on recent
+Ubuntu kernels, hit by the installer while it copies the system to disk. It is
+intermittent: the same image installs fine on another try.
+
+Fix. Two things, both already in the build. The installer boots with
+modprobe.blacklist=zfs, which makes the fault much rarer. And a failed or stalled
+install is retried with a fresh VM (InstallAttempts, default 2). A stall is
+caught after the disk stops growing for a while (StallMinutes, default 15) so the
+retry starts quickly. If you see it fail every time, raise InstallAttempts.
+
 ## Where the build leaves evidence
 
 Every run writes to `out\<vmname>\`:

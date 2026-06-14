@@ -66,10 +66,33 @@ try {
     Write-BuildLog "Log file: $logFile" INFO
 
     Invoke-Preflight -Config $Config
+
+    # Remove any VM left from an earlier run before rebuilding the image. A running
+    # VM keeps the old image mounted and locked, which would fail the rebuild.
+    Remove-VmIfPresent -Name $Config.VmName
+
     $creds   = New-BuildCredentials -Config $Config
     $isoPath = New-AutoinstallImage -Config $Config -Creds $creds -RepoRoot $repoRoot
-    New-EncryptedVm -Config $Config -IsoPath $isoPath
-    Invoke-Install -Config $Config
+
+    # The Ubuntu installer hits a known random kernel fault in overlayfs during the
+    # image extract on recent kernels. It is intermittent, so a failed install gets
+    # a fresh VM and another try. The boot parameter set in the menu template makes
+    # it rarer; this retry clears the rest.
+    $attempts = if ($Config.ContainsKey('InstallAttempts') -and $Config.InstallAttempts) { [int]$Config.InstallAttempts } else { 2 }
+    for ($attempt = 1; $attempt -le $attempts; $attempt++) {
+        New-EncryptedVm -Config $Config -IsoPath $isoPath
+        try {
+            Invoke-Install -Config $Config
+            break
+        }
+        catch {
+            Write-BuildLog "Install attempt $attempt of $attempts failed: $($_.Exception.Message)" WARN
+            if ($attempt -ge $attempts) {
+                throw "The install did not succeed in $attempts attempts. Last error: $($_.Exception.Message)"
+            }
+            Write-BuildLog "Retrying with a fresh VM. Some installer kernel faults are random and clear on a retry." WARN
+        }
+    }
     $result = Invoke-Verify -Config $Config -Creds $creds
 
     # The staging folder and the rebuilt image hold the passphrase in clear text.
@@ -101,6 +124,10 @@ catch {
     # A picture of the console is the fastest way to see where it stopped.
     $shot = Save-VmConsole -VMName $Config.VmName -OutPath (Join-Path $outDir 'build-failure-console.png')
     if ($shot) { Write-BuildLog "Console screenshot saved to $shot" ERROR }
+    # Power the VM off so a failed run does not leave it running and holding the
+    # image file locked for the next run.
+    try { if ((Get-VM -Name $Config.VmName -ErrorAction SilentlyContinue).State -eq 'Running') { Stop-VM -Name $Config.VmName -TurnOff -Force } }
+    catch { Write-BuildLog "Could not stop the VM after the failure: $_" WARN }
     Write-Host ''
     Write-Host "Build failed. See the log at $logFile" -ForegroundColor Red
     throw

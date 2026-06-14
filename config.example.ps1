@@ -54,4 +54,11 @@
     # InstallTimeoutMinutes  = 60
     # VerifyTimeoutSeconds   = 600
     # ColdBootTimeoutSeconds = 360
+
+    # The Ubuntu installer can hit a random kernel fault during the image extract.
+    # A failed install is retried with a fresh VM this many times. A stalled
+    # install is caught after this many minutes of the disk not growing, so a
+    # retry starts quickly instead of waiting out the full timeout.
+    # InstallAttempts = 2
+    # StallMinutes    = 15
 }

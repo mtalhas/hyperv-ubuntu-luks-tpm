@@ -5,6 +5,19 @@
 # template and refuses to change it. So the Linux template is set first, and the
 # TPM is switched on last. Building the VM fresh each time sidesteps that lock.
 
+function Remove-VmIfPresent {
+    # Stops and removes a VM if it exists, leaving its disk file alone. Run before
+    # rebuilding the install image too, because a leftover running VM keeps the
+    # image file mounted and locked, which would fail the rebuild.
+    param([string]$Name)
+    $existing = Get-VM -Name $Name -ErrorAction SilentlyContinue
+    if (-not $existing) { return }
+    if ($existing.State -ne 'Off') { Stop-VM -Name $Name -TurnOff -Force }
+    Get-VMSnapshot -VMName $Name -ErrorAction SilentlyContinue | Remove-VMSnapshot -ErrorAction SilentlyContinue
+    Remove-VM -Name $Name -Force
+    Start-Sleep -Seconds 2
+}
+
 function Remove-FileWithRetry {
     # Right after Remove-VM the disk file can stay locked for a moment. Retry a few
     # times so the build does not fail with a transient "file in use".
@@ -28,14 +41,7 @@ function New-EncryptedVm {
 
     Write-BuildLog "Creating VM '$vm'" STEP
 
-    $existing = Get-VM -Name $vm -ErrorAction SilentlyContinue
-    if ($existing) {
-        Write-BuildLog "Removing the existing VM (its disk file is recreated fresh below)." INFO
-        if ($existing.State -ne 'Off') { Stop-VM -Name $vm -TurnOff -Force }
-        Get-VMSnapshot -VMName $vm -ErrorAction SilentlyContinue | Remove-VMSnapshot -ErrorAction SilentlyContinue
-        Remove-VM -Name $vm -Force
-        Start-Sleep -Seconds 2
-    }
+    Remove-VmIfPresent -Name $vm
 
     if (-not (Test-Path $vmDir)) { New-Item -ItemType Directory -Path $vmDir -Force | Out-Null }
     Remove-FileWithRetry -Path $vhdx

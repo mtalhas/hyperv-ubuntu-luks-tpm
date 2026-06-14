@@ -58,6 +58,14 @@ function Invoke-Install {
     Write-BuildLog "Running the unattended install (timeout $timeoutMin min)" STEP
     Start-VM -Name $vm
 
+    # If the installer hits the random kernel fault it freezes with the network
+    # still up, so the disk stops growing. Catching that lets a retry start in
+    # minutes instead of waiting out the whole timeout.
+    $vhdx = Join-Path $Config.VmDir ("{0}.vhdx" -f $vm)
+    $stallMin = if ($Config.ContainsKey('StallMinutes') -and $Config.StallMinutes) { [int]$Config.StallMinutes } else { 15 }
+    $lastSize = 0
+    $lastGrowth = Get-Date
+
     $deadline  = (Get-Date).AddMinutes($timeoutMin)
     $seenUp    = $false
     $downSince = [datetime]::MinValue
@@ -66,9 +74,20 @@ function Invoke-Install {
     while ($decision -eq 'continue') {
         $state = (Get-VM -Name $vm).State
         $up = if ($state -eq 'Off') { $false } else { Test-TcpPort -IpAddress $ip -Port 22 -TimeoutMs 3000 }
+
+        if ($state -ne 'Off') {
+            $size = try { (Get-VHD -Path $vhdx -ErrorAction Stop).FileSize } catch { $lastSize }
+            if ($size -gt $lastSize) { $lastSize = $size; $lastGrowth = Get-Date }
+        }
+
         $p = Get-InstallProgress -State $state -PortUp $up -SeenUp $seenUp -DownSince $downSince -Now (Get-Date) -Deadline $deadline
         if ($p.SeenUp -and -not $seenUp) { Write-BuildLog "Installer is up and running." INFO }
         $seenUp = $p.SeenUp; $downSince = $p.DownSince; $decision = $p.Decision
+
+        if ($decision -eq 'continue' -and $seenUp -and ((Get-Date) - $lastGrowth).TotalMinutes -ge $stallMin) {
+            Write-BuildLog "The disk has not grown for $stallMin minutes while the installer is up. The install looks stalled." WARN
+            $decision = 'failed'
+        }
         if ($decision -eq 'continue') { Start-Sleep -Seconds 15 }
     }
 

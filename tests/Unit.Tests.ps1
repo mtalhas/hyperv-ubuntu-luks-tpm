@@ -122,6 +122,14 @@ Describe 'Answer file template integrity' -Tag 'Unit' {
         $tpl = Get-Content (Join-Path $script:Repo 'templates\user-data.tt') -Raw
         $tpl | Should -Match 'add_dracutmodules\+="\s*clevis'
     }
+    It 'does not trace the post-install script (would leak secrets into the log)' {
+        $tpl = Get-Content (Join-Path $script:Repo 'templates\user-data.tt') -Raw
+        $tpl | Should -Not -Match '(?m)^\s*set -eux'
+    }
+    It 'boots the installer with the overlayfs kernel fault workaround' {
+        $grub = Get-Content (Join-Path $script:Repo 'templates\grub.cfg') -Raw
+        $grub | Should -Match 'modprobe\.blacklist=zfs'
+    }
 }
 
 Describe 'Get-InstallProgress (install completion heuristic)' -Tag 'Unit' {
